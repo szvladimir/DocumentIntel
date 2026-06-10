@@ -4,6 +4,17 @@ import json
 from app.matching import parse_text, parse_document
 
 
+def test_parse_tokrm_1_pdf_prints_json():
+    filepath = Path("data/uploads/TOKRM_1.pdf")
+    assert filepath.exists(), f"Expected file not found: {filepath}"
+
+    result = parse_document(filepath)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    assert isinstance(result, dict)
+
+
+
 def test_parse_text_extracts_expected_fields():
     text = '''
     Дата: 15.05.2026
@@ -16,7 +27,7 @@ def test_parse_text_extracts_expected_fields():
 
     Обща сума: 425.50 EUR
     такса: 5.00 EUR
-    Сумаf: 430.50 EUR
+    Сума/Amount: 430.50 EUR
     '''
 
     result = parse_text(text)
@@ -50,11 +61,40 @@ def test_parse_invoice_lines_with_date_and_amount():
     ]
 
 
-def test_parse_tokrm_1_pdf_prints_json():
-    filepath = Path("data/uploads/TOKRM_1.pdf")
-    assert filepath.exists(), f"Expected file not found: {filepath}"
+def test_extract_sender_recipient_from_generated_pdf(tmp_path):
+    import fitz
 
-    result = parse_document(filepath)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    out = tmp_path / "sender_recipient.pdf"
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=200)
 
-    assert isinstance(result, dict)
+    fontfile = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+    page.insert_font(
+       fontname="dejavu",
+       fontfile=fontfile
+    )
+    # Header labels
+    page.insert_text((15, 50), "Наредител/Sender:", fontname="dejavu", fontsize=12)
+    page.insert_text((250, 50), "Получател/Recipient:", fontname="dejavu", fontsize=12)
+    page.insert_text((390, 50), "Енерго-Про Продажби АД", fontname="dejavu", fontsize=12)
+     # Names on next line
+    page.insert_text((15, 70), "MyNameXXXXXX", fontname="dejavu", fontsize=12)
+    page.insert_text((250, 70), "ЕНЕРГО-ПРО", fontname="dejavu", fontsize=12)
+    page.insert_text((390, 70), "тел./phone: 0700 161 61", fontname="dejavu", fontsize=12)
+
+    # CINs
+    page.insert_text((15, 90), "КИН/CIN: 2049932947", fontname="dejavu", fontsize=12)
+    page.insert_text((250, 90), "КИН/CIN: 7011778568", fontname="dejavu", fontsize=12)
+
+    doc.save(str(out))
+    doc.close()
+ 
+
+
+    result = parse_document(out)
+
+    assert result.get("Sender") == "MyNameXXXXXX"
+    assert result.get("Recipient") == "ЕНЕРГО-ПРО"
+    assert result.get("Sender_CIN") == "2049932947"
+    assert result.get("Recipient_CIN") == "7011778568"
