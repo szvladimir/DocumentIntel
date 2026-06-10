@@ -69,48 +69,69 @@ def _parse_amount(text: str, labels: List[str]) -> str:
     return _clean_value(_first_match(patterns, text, flags=re.I))
 
 
+def _split_invoice_number_and_date(value: str) -> tuple[str, str]:
+    value = value.strip()
+    if "/" in value:
+        invoice_part, date_candidate = value.rsplit("/", 1)
+        date_candidate = date_candidate.strip()
+        if re.match(r"^[0-3]?\d[./-][0-1]?\d[./-]\d{4}$", date_candidate):
+            return invoice_part.strip(), date_candidate
+    return value, ""
+
+
 def _parse_invoice_pairs(text: str) -> List[Dict[str, str]]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    pairs: List[Dict[str, str]] = []
+    invoices: List[Dict[str, str]] = []
     seen = set()
 
-    def add_pair(number: str, amount: str) -> None:
-        number = number.strip()
-        amount = amount.strip().replace(" ", "")
-        if not number or not amount:
+    def add_invoice(invoice: str, from_date: str, amount: str) -> None:
+        invoice = invoice.strip()
+        from_date = from_date.strip()
+        amount = amount.strip().replace(" ", "").replace(",", ".")
+        if not invoice or not amount:
             return
-        key = (number, amount)
+        key = (invoice, from_date, amount)
         if key in seen:
             return
         seen.add(key)
-        pairs.append({"Номер фактура": number, "Сума": amount})
+        invoices.append({"invoice": invoice, "from": from_date, "amount": amount})
 
-    # Search for invoice-number / amount pairs in the document
+    invoice_line_pattern = re.compile(
+        r"Номер\s*фактура\s*[:\-]?\s*([0-9A-Za-zА-Яа-я]+/[0-3]?\d[./-][0-1]?\d[./-]\d{4})\s*,?\s*Сума\s*[:\-]?\s*([0-9]+(?:[.,][0-9]{2}))",
+        flags=re.I,
+    )
+    generic_line_pattern = re.compile(
+        r"([0-9A-Za-zА-Яа-я]+/[0-3]?\d[./-][0-1]?\d[./-]\d{4})\s*,?\s*Сума\s*[:\-]?\s*([0-9]+(?:[.,][0-9]{2}))",
+        flags=re.I,
+    )
+
     for line in lines:
-        if re.search(r'Номер\s*фактура|Invoice\s*(?:No|Number)?|фактура', line, re.I):
-            matches = re.findall(r'([A-Za-zА-Яа-я0-9\-_/]{3,})\s+([0-9]+(?:[.,][0-9]{2}))', line)
-            for number, amount in matches:
-                add_pair(number, amount)
+        match = invoice_line_pattern.search(line)
+        if match:
+            invoice_raw = match.group(1)
+            invoice, from_date = _split_invoice_number_and_date(invoice_raw)
+            add_invoice(invoice, from_date, match.group(2))
+            continue
 
-    if not pairs:
-        # Scan around possible table headings and general lines
-        for i, line in enumerate(lines):
-            if re.search(r'Номер\s*фактура|Invoice\s*(?:No|Number)?', line, re.I):
-                for candidate in lines[i + 1 : i + 15]:
-                    if re.search(r'(?:(?:Сума|Amount)|[0-9]+(?:[.,][0-9]{2}))', candidate, re.I):
-                        match = re.search(r'([A-Za-zА-Яа-я0-9\-_/]{3,})\s+([0-9]+(?:[.,][0-9]{2}))', candidate)
-                        if match:
-                            add_pair(match.group(1), match.group(2))
-                break
+        if "Сума" in line and "/" in line:
+            match = generic_line_pattern.search(line)
+            if match:
+                invoice_raw = match.group(1)
+                invoice, from_date = _split_invoice_number_and_date(invoice_raw)
+                add_invoice(invoice, from_date, match.group(2))
+                continue
 
-    if not pairs:
+    if not invoices:
         for line in lines:
-            if re.search(r'ТОК|TOK|фактура', line, re.I):
-                match = re.search(r'([A-Za-zА-Яа-я0-9\-_/]{3,})\b.*?([0-9]+(?:[.,][0-9]{2}))', line, re.I)
-                if match:
-                    add_pair(match.group(1), match.group(2))
+            match = re.search(
+                r"([0-9A-Za-zА-Яа-я]+?)/(?:([0-3]?\d[./-][0-1]?\d[./-]\d{4}))\s*,?\s*Сума\s*[:\-]?\s*([0-9]+(?:[.,][0-9]{2}))",
+                line,
+                flags=re.I,
+            )
+            if match:
+                add_invoice(match.group(1), match.group(2), match.group(3))
 
-    return pairs
+    return invoices
 
 
 def parse_text(text: str) -> Dict[str, Any]:
