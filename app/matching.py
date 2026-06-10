@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
 
 import fitz
 
@@ -154,9 +154,53 @@ def parse_document(filename: Path) -> Dict[str, Any]:
     if not filepath.exists():
         raise FileNotFoundError(f"Document not found: {filepath}")
 
-    doc = fitz.open(filepath)
-    text = "\n".join(page.get_text() for page in doc)
+    text = extract_text_in_reading_order(filepath)
     return parse_text(text)
+
+
+def extract_text_in_reading_order(pdf_path: Union[Path, str]) -> str:
+    """Extract text from PDF pages in reading order using word coordinates.
+
+    Groups words by similar Y coordinate (same visual line) and sorts by X.
+    Returns full document text with reconstructed lines joined by newlines.
+    """
+    pdf_path = Path(pdf_path)
+    doc = fitz.open(pdf_path)
+    all_lines: List[str] = []
+
+    for page in doc:
+        words = page.get_text("words")  # list of tuples (x0, y0, x1, y1, word, ...)
+        if not words:
+            continue
+
+        # Sort by y (top coordinate) then x (left)
+        words_sorted = sorted(words, key=lambda w: (w[1], w[0]))
+
+        current_y = None
+        current_line: List[tuple[float, str]] = []
+        y_threshold = 3.0
+
+        for w in words_sorted:
+            x0, y0, x1, y1, word = w[0], w[1], w[2], w[3], w[4]
+
+            if current_y is None:
+                current_y = y0
+
+            if abs(y0 - current_y) <= y_threshold:
+                current_line.append((x0, word))
+            else:
+                # flush current line
+                current_line.sort(key=lambda t: t[0])
+                line_text = " ".join([t[1] for t in current_line])
+                all_lines.append(line_text)
+                current_line = [(x0, word)]
+                current_y = y0
+
+        if current_line:
+            current_line.sort(key=lambda t: t[0])
+            all_lines.append(" ".join([t[1] for t in current_line]))
+
+    return "\n".join(all_lines)
 
 
 def parse_uploads(pattern: str = "TOK*.pdf") -> Dict[str, Dict[str, Any]]:
