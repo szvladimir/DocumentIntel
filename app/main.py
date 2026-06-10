@@ -4,13 +4,42 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi import HTTPException
 import os
 from openai import OpenAI
+import chromadb
+from pydantic import BaseModel
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app = FastAPI(title="Document Intelligence Agent")
 
+class SearchRequest(BaseModel):
+    query: str
+
+chroma_client = chromadb.PersistentClient(
+    path="data/chroma"
+)
+
+collection = chroma_client.get_or_create_collection(
+    name="documents"
+)
 UPLOAD_DIR = Path("data/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+
+
+def chunk_text(
+        text: str,
+        chunk_size: int = 500,
+        overlap: int = 50
+):
+    chunks = []
+
+    start = 0
+
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end])
+        start += chunk_size - overlap
+
+    return chunks
 
 @app.get("/")
 async def root():
@@ -93,3 +122,72 @@ async def summarize_pdf(filename: str):
         "filename": filename,
         "summary": summary
     }    
+
+@app.post("/index/{filename}")
+async def index_file(filename: str):
+    filepath = UPLOAD_DIR / filename
+
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    doc = fitz.open(filepath)
+
+    text = ""
+    for page in doc:
+        text += page.get_text()
+
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="No text found in PDF")
+
+    chunks = chunk_text(text)
+
+    collection.add(
+        ids=[f"{filename}_{i}" for i in range(len(chunks))],
+        documents=chunks,
+        metadatas=[
+            {"filename": filename, "chunk": i}
+            for i in range(len(chunks))
+        ]
+    )
+
+    return {
+        "status": "indexed",
+        "filename": filename,
+        "chunks": len(chunks),
+        "total_chunks_in_db": collection.count()
+    }
+
+@app.post("/search")
+async def search(req: SearchRequest):
+    result = collection.query(
+        query_texts=[req.query],
+        n_results=5
+    )
+
+    items = []
+
+    for i, doc in enumerate(result["documents"][0]):
+        items.append({
+            "rank": i + 1,
+            "id": result["ids"][0][i],
+            "filename": result["metadatas"][0][i]["filename"],
+            "distance": result["distances"][0][i],
+            "text": doc
+        })
+
+    return {
+        "query": req.query,
+        "results": items
+    }
+
+@app.delete("/clear")
+async def clear_collection():
+    ids = collection.get()["ids"]
+
+    if ids:
+        collection.delete(ids=ids)
+
+    return {
+        "status": "cleared",
+        "deleted": len(ids)
+    }
