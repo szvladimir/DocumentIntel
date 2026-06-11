@@ -98,3 +98,21 @@ def test_extract_sender_recipient_from_generated_pdf(tmp_path):
     assert result.get("Recipient") == "ЕНЕРГО-ПРО"
     assert result.get("Sender_CIN") == "2049932947"
     assert result.get("Recipient_CIN") == "7011778568"
+
+
+def test_parse_sum_with_suma_slovom_ignores_middle_text():
+    """Test that 'Сума словом' with mixed text extracts the last numeric amount."""
+    text = """
+    Сума словом/Amount in words: осем EUR , 96 8.96 EUR
+    """
+    result = parse_text(text)
+    assert result["Sum"] == "8.96"
+
+
+def test_parse_sum_with_suma_slovom_multiple_values():
+    """Test that 'Сума словом' extracts the last amount when multiple numbers present."""
+    text = """
+    Сума словом/Amount in words: петдесет BGN 50.00 EUR
+    """
+    result = parse_text(text)
+    assert result["Sum"] == "50.00"

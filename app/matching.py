@@ -67,16 +67,55 @@ def _parse_address(text: str) -> str:
         r"^(?:Адрес|Адреc|Address)\s*[:\-]?\s*(.+?)\.?\s*$",
     ]
     addr = _first_match(patterns, text, flags=re.I | re.M)
-    if not addr:
+    if addr and "Visible at" not in addr:
+        pass
+    else:
+        if addr and "Visible at" in addr:
+            addr = None
         # try to find line that starts with postal code, city, street pattern
         m = re.search(r"\b(\d{3,4}\s*,\s*[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё\-]+\b.*)$", text, flags=re.M)
         if m:
             addr = m.group(1)
+        else:
+            # if no postal/city/street match, extract address after Описание/Description
+            m = re.search(
+                r"(?m)^(?:Описание/Description)\s*[:\-]?\s*(.+)$",
+                text,
+                flags=re.I,
+            )
+            if m:
+                addr = m.group(1)
+            else:
+                # fallback: look for a standalone address line without explicit label
+                m = re.search(
+                    r"(?m)^(?:ул\.?|улица|street|гр\.?|град)\s+(.+)$",
+                    text,
+                    flags=re.I,
+                )
+                if m:
+                    addr = m.group(1)
+
     return _clean_value(addr)
 
 
 def _parse_amount(text: str, labels: List[str]) -> str:
     label_pattern = r"(?:" + r"|".join(re.escape(label) for label in labels) + r")"
+    
+    # Special handling for "Сума словом" - extract the LAST valid amount from that line
+    if any(label.lower() == "сума словом" for label in labels):
+        sum_match = re.search(
+            r"(?:Сума словом|Amount in words)\s*[:\-]?\s*(.+?)(?:\n|$)",
+            text,
+            flags=re.I
+        )
+        if sum_match:
+            line_content = sum_match.group(1)
+            # Find all amounts (number with optional 2 decimals) potentially followed by currency
+            amounts = re.findall(r"([0-9]+(?:[.,][0-9]{2})?)\s*(?:EUR|€|лв|BGN)?", line_content)
+            if amounts:
+                # Return the last amount found in the line
+                return _clean_value(amounts[-1].replace(",", "."))
+    
     patterns = [
         rf"{label_pattern}\s*[:\-]?\s*([0-9]+(?:[.,][0-9]{{2}})?)(?:\s*EUR|\s*€|\s*лв|\s*BGN)?",
     ]
@@ -157,7 +196,7 @@ def parse_text(text: str) -> Dict[str, Any]:
         "Client": _parse_client(text),
         "Address": _parse_address(text),
         "Invoices": _parse_invoice_pairs(text),
-        "Sum": _parse_amount(text, ["Обща сума","Сума общо", "Total amount", "Total"]),
+        "Sum": _parse_amount(text, ["Обща сума","Сума общо", "Сума словом","Total amount", "Total"]),
         "Fee": _parse_amount(text, ["такса", "Fee"]),
         "FinalSum": _parse_amount(text, ["Amount", "Total payable", "Final sum"]),
     }
