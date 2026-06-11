@@ -60,7 +60,6 @@ def _parse_client(text: str) -> str:
     ]
     return _clean_value(_first_match(patterns, text, flags=re.I))
 
-
 def _parse_address(text: str) -> str:
     patterns = [
         r"(?:Адрес|Адреc|Address)\s*[:\-]?\s*(.+?)\.?\s*\n",
@@ -180,8 +179,6 @@ def parse_document(filename: Path) -> Dict[str, Any]:
         data["Recipient"] = coord_res.get("recipient_name", "")
         data["Sender_CIN"] = coord_res.get("sender_cin", "")
         data["Recipient_CIN"] = coord_res.get("recipient_cin", "")
-        data["Sender_Address"] = coord_res.get("sender_address", "")
-        data["Recipient_Address"] = coord_res.get("recipient_address", "")
     except Exception:
         # don't fail parsing if coords extraction fails
         data["Sender_CIN"] = ""
@@ -269,8 +266,6 @@ def extract_sender_recipient_by_coords(pdf_path: Union[Path, str], left_cut: flo
     recipient_name = ""
     sender_cin = ""
     recipient_cin = ""
-    sender_address = ""
-    recipient_address = ""
 
     y_threshold = 3.0
 
@@ -308,28 +303,15 @@ def extract_sender_recipient_by_coords(pdf_path: Union[Path, str], left_cut: flo
             left_l = left.lower()
             mid_l = mid.lower()
             if ("наредител" in left_l) or ("sender" in left_l):
-                # next line in the same column is sender name
                 if idx + 1 < len(col_lines):
                     sender_name_candidate = col_lines[idx + 1][0]
                     if sender_name_candidate:
                         sender_name = sender_name_candidate
-                        # print(f"Found sender name candidate: '{sender_name}' from line: '{left}'")
-                        # try next line for address (avoid CIN line)
-                        if idx + 2 < len(col_lines):
-                            addr_candidate = col_lines[idx + 2][0]
-                            if addr_candidate and not re.search(r"КИН\s*/?\s*CIN", addr_candidate, flags=re.I):
-                                sender_address = addr_candidate
             if ("получател" in mid_l) or ("recipient" in mid_l):
                 if idx + 1 < len(col_lines):
                     recipient_name_candidate = col_lines[idx + 1][1]
                     if recipient_name_candidate:
                         recipient_name = recipient_name_candidate
-                        # print(f"Found recipient name candidate: '{recipient_name}' from line: '{mid}'")
-                        # try next line for address (avoid CIN line)
-                        if idx + 2 < len(col_lines):
-                            addr_candidate = col_lines[idx + 2][1]
-                            if addr_candidate and not re.search(r"КИН\s*/?\s*CIN", addr_candidate, flags=re.I):
-                                recipient_address = addr_candidate
 
         # Extract CIN numbers and explicit addresses from each column
         for left, mid, right in col_lines:
@@ -337,24 +319,15 @@ def extract_sender_recipient_by_coords(pdf_path: Union[Path, str], left_cut: flo
             m_left = re.search(r"КИН\s*/?\s*CIN\s*[:\-]?\s*([0-9]+)", left, flags=re.I)
             if m_left and not sender_cin:
                 sender_cin = m_left.group(1)
-            # explicit address label in left column
-            m_addr_left = re.search(r"(?:Адрес|Адреc|Address)\s*[:\-]?\s*(.+)$", left, flags=re.I)
-            if m_addr_left and not sender_address:
-                sender_address = m_addr_left.group(1)
             m_mid = re.search(r"КИН\s*/?\s*CIN\s*[:\-]?\s*([0-9]+)", mid, flags=re.I)
             if m_mid and not recipient_cin:
                 recipient_cin = m_mid.group(1)
-            m_addr_mid = re.search(r"(?:Адрес|Адреc|Address)\s*[:\-]?\s*(.+)$", mid, flags=re.I)
-            if m_addr_mid and not recipient_address:
-                recipient_address = m_addr_mid.group(1)
 
     return {
         "sender_name": sender_name,
         "recipient_name": recipient_name,
         "sender_cin": sender_cin,
         "recipient_cin": recipient_cin,
-        "sender_address": sender_address,
-        "recipient_address": recipient_address,
     }
 
 
