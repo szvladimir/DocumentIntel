@@ -60,6 +60,7 @@ def _parse_client(text: str) -> str:
     ]
     return _clean_value(_first_match(patterns, text, flags=re.I))
 
+
 def _parse_address(text: str) -> str:
     patterns = [
         r"(?:Адрес|Адреc|Address)\s*[:\-]?\s*(.+?)\.?\s*\n",
@@ -156,7 +157,7 @@ def parse_text(text: str) -> Dict[str, Any]:
         "Client": _parse_client(text),
         "Address": _parse_address(text),
         "Invoices": _parse_invoice_pairs(text),
-        "Sum": _parse_amount(text, ["Обща сума", "Total amount", "Total"]),
+        "Sum": _parse_amount(text, ["Обща сума","Сума общо", "Total amount", "Total"]),
         "Fee": _parse_amount(text, ["такса", "Fee"]),
         "FinalSum": _parse_amount(text, ["Amount", "Total payable", "Final sum"]),
     }
@@ -241,7 +242,7 @@ def extract_sender_recipient_by_coords(pdf_path: Union[Path, str], left_cut: flo
 
     Returns dict with keys: sender_name, recipient_name, sender_cin, recipient_cin
     """
-    pdf_path = Path(pdf_path)
+    df_path = Path(pdf_path)
     doc = fitz.open(pdf_path)
 
     # Collect words across pages

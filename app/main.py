@@ -6,6 +6,7 @@ import os
 from openai import OpenAI
 import chromadb
 from pydantic import BaseModel
+from app.matching import parse_document
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app = FastAPI(title="Document Intelligence Agent")
@@ -155,6 +156,23 @@ async def index_file(filename: str):
         "filename": filename,
         "chunks": len(chunks),
         "total_chunks_in_db": collection.count()
+    }
+
+@app.post("/match/{filename}")
+async def match_file(filename: str):
+    filepath = UPLOAD_DIR / filename
+
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        result = parse_document(filepath)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to parse document: {exc}")
+
+    return {
+        "filename": filename,
+        "parsed": result
     }
 
 @app.post("/search")
