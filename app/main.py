@@ -7,12 +7,16 @@ from openai import OpenAI
 import chromadb
 from pydantic import BaseModel
 from app.matching import parse_document
+from app import db_agent
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app = FastAPI(title="Document Intelligence Agent")
 
 class SearchRequest(BaseModel):
     query: str
+
+class AskDBRequest(BaseModel):
+    question: str
 
 chroma_client = chromadb.PersistentClient(
     path="data/chroma"
@@ -196,6 +200,24 @@ async def search(req: SearchRequest):
     return {
         "query": req.query,
         "results": items
+    }
+
+@app.post("/ask-db")
+async def ask_db(req: AskDBRequest):
+    question = req.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required.")
+
+    sql = db_agent.generate_sql_from_question(question, client)
+    query_result = db_agent.execute_select_query(db_agent.DEFAULT_DB_PATH, sql)
+    answer = db_agent.generate_answer(question, sql, query_result["columns"], query_result["rows"], client)
+
+    return {
+        "question": question,
+        "sql": sql,
+        "columns": query_result["columns"],
+        "rows": query_result["rows"],
+        "answer": answer,
     }
 
 @app.delete("/clear")
