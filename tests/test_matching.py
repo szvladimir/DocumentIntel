@@ -5,7 +5,7 @@ from app.matching import parse_text, parse_document
 
 
 def test_parse_tokrm_1_pdf_prints_json():
-    filepath = Path("data/uploads/TOKRM_1.pdf")
+    filepath = Path("data/processed/TOKRM_1.pdf")
     assert filepath.exists(), f"Expected file not found: {filepath}"
 
     result = parse_document(filepath)
