@@ -57,6 +57,7 @@ def generate_query_intent(question: str, client: Any) -> QueryIntent:
     if not question or not question.strip():
         raise HTTPException(status_code=400, detail="Question must be provided.")
 
+    current_date = datetime.utcnow().date().isoformat()
     messages = [
         {
             "role": "system",
@@ -86,6 +87,17 @@ def generate_query_intent(question: str, client: Any) -> QueryIntent:
                 "- Words \"почистка\", \"household\", \"управление\", \"домоуправление\", \"домоуправител\" map to service_category = \"housekeeper\".\n"
                 "- Recipient is the service provider. Sender is the payer. For service questions, use providers.category for service categories and do not search service words inside Sender, Recipient, Address or filename.\n"
                 "- Dates must be ISO format YYYY-MM-DD.\n"
+                "- Only create date_range when the user explicitly mentions a specific date, a month, a season, a year, or a relative time period such as today, yesterday, this week, last month, this year, or last year.\n"
+                "- If no explicit date or time period is mentioned, set date_range to null and search all available records.\n"
+                f"- CurrentDate = {current_date}\n"
+                "- Interpret relative periods using CurrentDate:\n"
+                "  - this year = calendar year containing CurrentDate\n"
+                "  - last year = previous calendar year\n"
+                "  - this month = month containing CurrentDate\n"
+                "  - last month = previous month\n"
+                "  - this week = week containing CurrentDate\n"
+                "- If a month, season, or specific date is mentioned without a year, assume the year of CurrentDate.\n"
+                "- Never return an error because date_range is missing.\n"
                 "- \"зима 2026\" means from 2025-12-01 inclusive to 2026-03-01 exclusive.\n"
                 "- \"январь 2026\" means from 2026-01-01 inclusive to 2026-02-01 exclusive.\n"
                 "- \"2026 год\" means from 2026-01-01 inclusive to 2027-01-01 exclusive.\n"

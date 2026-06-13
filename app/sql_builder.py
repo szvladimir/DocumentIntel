@@ -22,15 +22,18 @@ def build_payments_query(intent: dict[str, Any]) -> tuple[str, list[Any]]:
     if service_category is None:
         raise HTTPException(status_code=400, detail="service_category is required for payment queries.")
 
-    if not date_range or date_range.get("from") is None or date_range.get("to") is None:
-        raise HTTPException(status_code=400, detail="date_range.from and date_range.to are required.")
+    params: list[Any] = [service_category]
+    if date_range:
+        range_from = date_range.get("from") or date_range.get("from_")
+        range_to = date_range.get("to")
+        if range_from is None or range_to is None:
+            raise HTTPException(status_code=400, detail="date_range.from and date_range.to are required when date_range is provided.")
+        date_clause = " AND p.Date >= ? AND p.Date < ?"
+        params.extend([range_from, range_to])
+    else:
+        date_clause = ""
 
-    range_from = date_range.get("from") or date_range.get("from_")
-    range_to = date_range.get("to")
-    if range_from is None or range_to is None:
-        raise HTTPException(status_code=400, detail="date_range.from and date_range.to are required.")
-
-    params: list[Any] = [service_category, range_from, range_to]
+    where_clause = f"WHERE pr.category = ?{date_clause}"
 
     if intent_type == "sum_payments":
         if group_by == "month":
@@ -38,7 +41,7 @@ def build_payments_query(intent: dict[str, Any]) -> tuple[str, list[Any]]:
                 "SELECT strftime('%Y-%m', p.Date) AS month, SUM(p.FinalSum) AS total_payment "
                 "FROM processed_documents p "
                 "JOIN providers pr ON p.Recipient = pr.Recipient "
-                "WHERE pr.category = ? AND p.Date >= ? AND p.Date < ? "
+                f"{where_clause} "
                 "GROUP BY month ORDER BY month"
             )
         elif group_by == "recipient":
@@ -46,7 +49,7 @@ def build_payments_query(intent: dict[str, Any]) -> tuple[str, list[Any]]:
                 "SELECT p.Recipient, SUM(p.FinalSum) AS total_payment "
                 "FROM processed_documents p "
                 "JOIN providers pr ON p.Recipient = pr.Recipient "
-                "WHERE pr.category = ? AND p.Date >= ? AND p.Date < ? "
+                f"{where_clause} "
                 "GROUP BY p.Recipient ORDER BY p.Recipient"
             )
         else:
@@ -54,14 +57,14 @@ def build_payments_query(intent: dict[str, Any]) -> tuple[str, list[Any]]:
                 "SELECT SUM(p.FinalSum) AS total_payment "
                 "FROM processed_documents p "
                 "JOIN providers pr ON p.Recipient = pr.Recipient "
-                "WHERE pr.category = ? AND p.Date >= ? AND p.Date < ?"
+                f"{where_clause}"
             )
     else:
         sql = (
             "SELECT p.Date, p.Recipient, pr.category, p.FinalSum, p.filename "
             "FROM processed_documents p "
             "JOIN providers pr ON p.Recipient = pr.Recipient "
-            "WHERE pr.category = ? AND p.Date >= ? AND p.Date < ? "
+            f"{where_clause} "
             "ORDER BY p.Date LIMIT 200"
         )
 

@@ -136,3 +136,18 @@ def test_build_payments_query_rejects_unknown_intent():
                 "group_by": None,
             }
         )
+
+
+def test_build_payments_query_all_records_when_date_range_is_null():
+    intent = {
+        "intent_type": "sum_payments",
+        "service_category": "electricity",
+        "date_range": None,
+        "amount_field": "FinalSum",
+        "group_by": None,
+    }
+
+    sql, params = build_payments_query(intent)
+    assert "p.Date >= ?" not in sql
+    assert "p.Date < ?" not in sql
+    assert params == ["electricity"]
