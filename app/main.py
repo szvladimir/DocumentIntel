@@ -8,6 +8,8 @@ import chromadb
 from pydantic import BaseModel
 from app.matching import parse_document
 from app import db_agent
+from app.query_intent import generate_query_intent
+from app.sql_builder import build_payments_query, execute_parameterized_query
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app = FastAPI(title="Document Intelligence Agent")
@@ -216,6 +218,32 @@ async def ask_db(req: AskDBRequest):
         "question": question,
         "sql": sql,
         "columns": query_result["columns"],
+        "rows": query_result["rows"],
+        "answer": answer,
+    }
+
+
+@app.post("/ask-db-intent")
+async def ask_db_intent(req: AskDBRequest):
+    question = req.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required.")
+
+    intent = generate_query_intent(question, client)
+    sql, params = build_payments_query(intent.dict(by_alias=True))
+    query_result = execute_parameterized_query(db_agent.DEFAULT_DB_PATH, sql, params)
+
+    answer = ""
+    if query_result["rows"]:
+        answer = db_agent.generate_answer(question, sql, query_result["columns"], query_result["rows"], client)
+    else:
+        answer = "No matching rows were found for that question."
+
+    return {
+        "question": question,
+        "intent": intent.dict(by_alias=True),
+        "sql": sql,
+        "params": params,
         "rows": query_result["rows"],
         "answer": answer,
     }
