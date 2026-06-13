@@ -2,6 +2,8 @@ import re
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Union
 
+from app.normalizeDate import normalize_date_to_iso
+
 import fitz
 
 UPLOAD_DIR = Path("data/uploads")
@@ -35,7 +37,9 @@ def _parse_date(text: str) -> str:
         r"(?:Дата|Date)\s*[:\-]?\s*([0-3]?\d[./-][0-1]?\d[./-]\d{4})",
         r"([0-3]?\d[./-][0-1]?\d[./-]\d{4})",
     ]
-    return _clean_value(_first_match(patterns, text, flags=re.I))
+    raw = _first_match(patterns, text, flags=re.I)
+    normalized = normalize_date_to_iso(raw)
+    return _clean_value(normalized)
 
 
 def _parse_sender(text: str) -> str:

@@ -32,7 +32,7 @@ def test_parse_text_extracts_expected_fields():
 
     result = parse_text(text)
 
-    assert result["Date"] == "15.05.2026"
+    assert result["Date"] == "2026-05-15"
     assert result["Sender"] == "ООО Пример"
     assert result["Recipient"] == "Фирма Клиент ООД"
     assert result["Client"] == "12345"
