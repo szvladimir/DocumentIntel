@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Runtime data: uploaded PDFs, SQLite databases, and ChromaDB indexes
+data/*
+!data/.gitkeep
+
+# Local configuration and editor files
+.env
+.env.*
+.vscode/
+.idea/

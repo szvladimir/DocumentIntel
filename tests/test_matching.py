@@ -1,17 +1,20 @@
-from pathlib import Path
-import json
-
 from app.matching import parse_text, parse_document
 
 
-def test_parse_tokrm_1_pdf_prints_json():
-    filepath = Path("data/processed/TOKRM_1.pdf")
-    assert filepath.exists(), f"Expected file not found: {filepath}"
+def test_parse_document_returns_a_mapping_for_generated_pdf(tmp_path):
+    import fitz
+
+    filepath = tmp_path / "sample.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "Date: 15.05.2026\\nSum: 100.00 EUR")
+    doc.save(filepath)
+    doc.close()
 
     result = parse_document(filepath)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
 
     assert isinstance(result, dict)
+    assert result["Date"] == "2026-05-15"
 
 
 
